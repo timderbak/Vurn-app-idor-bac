@@ -71,13 +71,7 @@ def list_prescriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    List prescriptions.
-    This endpoint has PARTIAL protection: filters by role.
-    - Patients see only their own prescriptions.
-    - Doctors/nurses see all prescriptions.
-    - This is intentionally "correct" to provide contrast with vulnerable endpoints.
-    """
+    """List prescriptions."""
     if current_user.role == "patient":
         prescriptions = db.query(Prescription).filter(Prescription.patient_id == current_user.id).all()
     else:
@@ -91,21 +85,11 @@ def get_prescription(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get a specific prescription by UUID.
-
-    VULNERABILITY I4 (Horizontal IDOR with UUID - Medium):
-    Although using UUIDs (harder to enumerate than sequential IDs),
-    a patient can still access other patients' prescriptions if they
-    obtain the UUID (e.g., from the listing endpoint which leaks all IDs
-    for non-patient roles, or from other information disclosure).
-    No ownership check is performed.
-    """
+    """Get a specific prescription by UUID."""
     prescription = db.query(Prescription).filter(Prescription.id == prescription_id).first()
     if not prescription:
         raise HTTPException(status_code=404, detail="Prescription not found")
 
-    # VULNERABLE: No ownership check — any authenticated user can access any prescription
     return _enrich_prescription(prescription, db)
 
 
@@ -115,17 +99,8 @@ def get_patient_prescriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get all prescriptions for a specific patient.
-
-    VULNERABILITY I12-variant (Parameter Tampering / Horizontal IDOR - Medium):
-    A patient can change the patient_id to view another patient's prescriptions.
-    Partial protection: checks if user is patient role, but uses the URL param
-    instead of current_user.id.
-    """
-    # VULNERABLE: Checks the role but uses URL parameter instead of current_user.id
+    """Get all prescriptions for a specific patient."""
     if current_user.role == "patient":
-        # BUG: Should check `patient_id == current_user.id` but doesn't
         pass
 
     prescriptions = db.query(Prescription).filter(Prescription.patient_id == patient_id).all()
@@ -138,19 +113,11 @@ def create_prescription(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new prescription.
-
-    VULNERABILITY I9 (Vertical IDOR - Medium):
-    This endpoint should be restricted to doctors only.
-    But it only checks that the user is authenticated, not their role.
-    A nurse or even a patient can create prescriptions.
-    """
-    # VULNERABLE: No role check — should require role == "doctor"
+    """Create a new prescription."""
     prescription = Prescription(
         id=str(uuid.uuid4()),
         patient_id=request.patient_id,
-        doctor_id=current_user.id,  # Uses current user as doctor, but doesn't verify they're actually a doctor
+        doctor_id=current_user.id,
         medication=request.medication,
         dosage=request.dosage,
         frequency=request.frequency,
@@ -170,23 +137,14 @@ def update_prescription(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Update a prescription.
-
-    VULNERABILITY B6 (Missing object-level AC - Medium):
-    Checks that the user is a doctor, but does NOT verify that
-    the doctor is the one who created the prescription (ownership check).
-    Any doctor can modify any other doctor's prescriptions.
-    """
+    """Update a prescription."""
     prescription = db.query(Prescription).filter(Prescription.id == prescription_id).first()
     if not prescription:
         raise HTTPException(status_code=404, detail="Prescription not found")
 
-    # Partial protection: checks role...
     if current_user.role not in ["doctor", "admin"]:
         raise HTTPException(status_code=403, detail="Only doctors can update prescriptions")
 
-    # VULNERABLE B6: ...but does NOT check ownership (prescription.doctor_id == current_user.id)
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if value is not None:

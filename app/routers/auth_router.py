@@ -25,7 +25,6 @@ class RegisterRequest(BaseModel):
     email: str
     name: str
     password: str
-    # VULNERABILITY B9: Mass assignment — role field is accepted in registration
     role: str = "patient"
     phone: Optional[str] = None
 
@@ -71,13 +70,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    """
-    Register a new user.
-
-    VULNERABILITY B9 (Mass Assignment - Easy):
-    The 'role' field is accepted directly from user input.
-    An attacker can register as admin/doctor by including role in the request body.
-    """
+    """Register a new user."""
     existing = db.query(User).filter(User.email == request.email).first()
     if existing:
         raise HTTPException(
@@ -85,7 +78,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
-    # VULNERABLE: role is taken directly from user input without validation
+
     import secrets
     api_key = f"pk_{request.role}_{request.name.split()[0].lower()}_{secrets.token_hex(4)}"
 
@@ -93,7 +86,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         email=request.email,
         name=request.name,
         hashed_password=get_password_hash(request.password),
-        role=request.role,  # VULNERABLE: should be hardcoded to "patient"
+        role=request.role,
         api_key=api_key,
     )
     db.add(user)

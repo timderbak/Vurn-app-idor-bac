@@ -55,13 +55,7 @@ def list_records(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    List medical records.
-    This endpoint has CORRECT protection for contrast:
-    - Patients see only their own records
-    - Doctors see records of their patients
-    - Admins see all
-    """
+    """List medical records."""
     if current_user.role == "patient":
         records = db.query(MedicalRecord).filter(MedicalRecord.patient_id == current_user.id).all()
     elif current_user.role == "doctor":
@@ -77,18 +71,11 @@ def get_record(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get a specific medical record.
-
-    VULNERABILITY I5 (Horizontal IDOR - Easy):
-    Patient can view any patient's medical records by changing the ID.
-    Authentication is required, but no ownership check.
-    """
+    """Get a specific medical record."""
     record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Medical record not found")
 
-    # VULNERABLE: No ownership check
     return _enrich_record(record, db)
 
 
@@ -98,16 +85,8 @@ def get_patient_records(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get all medical records for a specific patient.
-
-    VULNERABILITY I12 (Parameter Tampering - Medium):
-    Patient can change patient_id in the URL to view another patient's records.
-    Has partial protection: checks if user is a patient, but then uses URL param.
-    """
+    """Get all medical records for a specific patient."""
     if current_user.role == "patient":
-        # VULNERABLE: Should check patient_id == current_user.id, but doesn't enforce it
-        # The intent was to filter, but the developer forgot the actual check
         pass
 
     records = db.query(MedicalRecord).filter(MedicalRecord.patient_id == patient_id).all()
@@ -120,15 +99,7 @@ def create_record(
     current_user: User = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new medical record.
-
-    VULNERABILITY B5 (Forced browsing - Medium):
-    This endpoint uses get_current_user_optional instead of get_current_user.
-    It accepts unauthenticated requests — no auth required at all.
-    Also no role check — anyone (or no one) can create medical records.
-    """
-    # VULNERABLE: Uses optional auth — works even without authentication
+    """Create a new medical record."""
     doctor_id = current_user.id if current_user else 0
 
     record = MedicalRecord(
@@ -150,15 +121,7 @@ def delete_record(
     record_id: int,
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a medical record.
-
-    VULNERABILITY B8 (Method-based bypass - Medium):
-    GET /{record_id} requires authentication.
-    DELETE /{record_id} does NOT require authentication at all.
-    Compare the two endpoints — GET has Depends(get_current_user), DELETE doesn't.
-    """
-    # VULNERABLE: No authentication at all
+    """Delete a medical record."""
     record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Medical record not found")

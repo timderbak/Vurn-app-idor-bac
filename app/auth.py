@@ -88,7 +88,7 @@ async def get_current_user_optional(
 ) -> Optional[User]:
     """
     Same as get_current_user but returns None instead of raising exception.
-    Used for endpoints that SHOULD require auth but DON'T (vulnerability).
+    Used for endpoints with optional authentication.
     """
     user = None
 
@@ -117,14 +117,10 @@ def require_role(allowed_roles: List[str]):
 
 def require_role_weak(allowed_roles: List[str]):
     """
-    VULNERABLE: Weak role checker - checks role name with case-insensitive comparison
-    and has a logic flaw: accepts 'Admin' but role is stored as 'admin'.
-    Also doesn't properly validate the token.
+    Role checker with case-insensitive comparison fallback.
     """
     async def role_checker(current_user: User = Depends(get_current_user)):
-        # BUG: This comparison is case-sensitive but the check below has a bypass
         if current_user.role not in allowed_roles:
-            # VULNERABILITY B12: Logic flaw - if user somehow has role with different case, it passes
             if current_user.role.lower() in [r.lower() for r in allowed_roles]:
                 return current_user
             raise HTTPException(

@@ -28,7 +28,6 @@ class AppointmentResponse(BaseModel):
 
 
 class AppointmentCreateRequest(BaseModel):
-    # VULNERABILITY B11: Parameter tampering — patient_id can be set to any value
     patient_id: int
     doctor_id: int
     date: str
@@ -66,14 +65,7 @@ def list_appointments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    List appointments.
-
-    VULNERABILITY B2 (Missing function-level AC - Easy):
-    Patient can list ALL appointments in the system, not just their own.
-    Should filter by patient_id for patients, by doctor_id for doctors.
-    """
-    # VULNERABLE: Returns ALL appointments regardless of role
+    """List appointments."""
     appointments = db.query(Appointment).all()
     return [_enrich_appointment(a, db) for a in appointments]
 
@@ -84,17 +76,11 @@ def get_appointment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get a specific appointment.
-
-    VULNERABILITY I3 (Horizontal IDOR - Easy):
-    Patient can view any appointment by changing the ID.
-    """
+    """Get a specific appointment."""
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    # VULNERABLE: No check if the user is the patient or doctor of this appointment
     return _enrich_appointment(appointment, db)
 
 
@@ -104,22 +90,13 @@ def create_appointment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new appointment.
-
-    VULNERABILITY B11 (Parameter Tampering - Easy):
-    The patient_id is taken directly from user input.
-    A patient can create appointments impersonating another patient.
-    Should use current_user.id for patients instead.
-    """
-    # Verify doctor exists and is actually a doctor
+    """Create a new appointment."""
     doctor = db.query(User).filter(User.id == request.doctor_id, User.role == "doctor").first()
     if not doctor:
         raise HTTPException(status_code=400, detail="Invalid doctor_id")
 
-    # VULNERABLE: patient_id is taken from request, not from current_user
     appointment = Appointment(
-        patient_id=request.patient_id,  # VULNERABLE: should be current_user.id for patients
+        patient_id=request.patient_id,
         doctor_id=request.doctor_id,
         date=request.date,
         time=request.time,
@@ -138,20 +115,11 @@ def update_appointment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Update an appointment.
-
-    VULNERABILITY I8 (Vertical IDOR - Medium):
-    This endpoint should be restricted to doctors and admins.
-    But any authenticated user (including patients) can update appointments.
-    Partially protected: checks auth, but not role or ownership.
-    """
+    """Update an appointment."""
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    # VULNERABLE: No role check and no ownership check
-    # Should verify current_user is the doctor assigned to this appointment or admin
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if value is not None:
@@ -167,14 +135,7 @@ def delete_appointment(
     appointment_id: int,
     db: Session = Depends(get_db),
 ):
-    """
-    Delete an appointment.
-
-    VULNERABILITY B7 (Method-based bypass - Medium):
-    GET endpoint requires authentication, but DELETE does NOT.
-    No authentication dependency is included — completely open.
-    """
-    # VULNERABLE: No authentication at all! (compare with GET which requires auth)
+    """Delete an appointment."""
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")

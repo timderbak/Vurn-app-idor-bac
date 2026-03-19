@@ -64,18 +64,11 @@ def get_file_info(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get file info by ID.
-
-    VULNERABILITY I6 (IDOR in files - Easy):
-    Any authenticated user can access info about any file by changing the file_id.
-    No ownership check is performed.
-    """
+    """Get file info by ID."""
     file = db.query(File).filter(File.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # VULNERABLE: No ownership check
     return FileResponse_(
         id=file.id,
         owner_id=file.owner_id,
@@ -91,17 +84,9 @@ def download_file(
     filename: str,
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Download a file by filename.
-
-    VULNERABILITY I7 (IDOR via filename - Medium):
-    Files are accessed by filename, and there's no check if the current user
-    owns the file. An attacker can guess/enumerate filenames to download
-    other users' files. Filenames are leaked through the list endpoint for staff.
-    """
+    """Download a file by filename."""
     file_path = UPLOAD_DIR / filename
 
-    # VULNERABLE: No ownership check — any authenticated user can download any file by name
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -153,18 +138,11 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a file.
-
-    VULNERABILITY (Vertical IDOR variant):
-    Any authenticated user can delete any file.
-    Should check ownership (file.owner_id == current_user.id) or admin role.
-    """
+    """Delete a file."""
     file = db.query(File).filter(File.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # VULNERABLE: No ownership check — any user can delete any file
     file_path = Path(file.file_path)
     if file_path.exists():
         file_path.unlink()

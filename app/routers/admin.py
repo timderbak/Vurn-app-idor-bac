@@ -48,15 +48,8 @@ class StatsResponse(BaseModel):
 def list_users(
     db: Session = Depends(get_db),
 ):
-    """
-    List all users in the system.
+    """List all users in the system."""
 
-    VULNERABILITY B3 (Forced browsing - Easy):
-    This admin endpoint has NO authentication at all.
-    Anyone who knows the URL can access it.
-    Exposes all user data including API keys.
-    """
-    # VULNERABLE: No authentication dependency — completely open
     users = db.query(User).all()
     return [
         UserAdminResponse(
@@ -77,19 +70,11 @@ def get_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get a specific user by ID.
-
-    VULNERABILITY I10 (Vertical IDOR - Easy):
-    Requires authentication but does NOT check if the user is an admin.
-    Any authenticated user (patient, nurse, etc.) can view any user's details
-    including other users' API keys.
-    """
+    """Get a specific user by ID."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # VULNERABLE: No role check — any authenticated user can access admin endpoints
     return UserAdminResponse(
         id=user.id,
         email=user.email,
@@ -107,14 +92,7 @@ def update_user(
     current_user: User = Depends(require_role_weak(["admin"])),
     db: Session = Depends(get_db),
 ):
-    """
-    Update a user (admin only).
-
-    VULNERABILITY B12 (Partial protection - Medium):
-    Uses require_role_weak which has a logic flaw in case comparison.
-    The middleware checks the role but the implementation has a bypass
-    where case-insensitive matching lets non-admin users through.
-    """
+    """Update a user (admin only)."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -143,11 +121,7 @@ def delete_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a user.
-    This endpoint is correctly protected — checks admin role.
-    Provided for contrast with vulnerable endpoints.
-    """
+    """Delete a user."""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -168,15 +142,8 @@ def get_stats(
     api_key: str = Security(api_key_header),
     db: Session = Depends(get_db),
 ):
-    """
-    Get system statistics.
+    """Get system statistics."""
 
-    VULNERABILITY B4 (Forced browsing with API Key - Medium):
-    Requires an API key, but accepts ANY valid API key from any user.
-    Should require an admin API key, but checks only that the key exists
-    in the database (belongs to any user).
-    """
-    # VULNERABLE: Accepts any valid API key, not just admin's
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required")
 
@@ -184,7 +151,7 @@ def get_stats(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # No check if user.role == "admin"!
+
     return StatsResponse(
         total_users=db.query(User).count(),
         total_patients=db.query(User).filter(User.role == "patient").count(),

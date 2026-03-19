@@ -36,7 +36,6 @@ class PatientUpdateRequest(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     emergency_contact: Optional[str] = None
-    # VULNERABILITY B10: Mass assignment — these fields should not be updatable
     user_id: Optional[int] = None
     role: Optional[str] = None
 
@@ -46,17 +45,8 @@ def list_patients(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    List all patient profiles.
+    """List all patient profiles."""
 
-    VULNERABILITY B1 (Missing function-level AC - Easy):
-    Any authenticated user can list ALL patients.
-    Should be restricted to doctor/nurse/admin only.
-
-    VULNERABILITY I11 (ID Enumeration - Easy):
-    Sequential IDs are exposed in the response, allowing enumeration.
-    """
-    # VULNERABLE: No role check — any authenticated user can list all patients
     profiles = db.query(PatientProfile).all()
     result = []
     for p in profiles:
@@ -83,18 +73,11 @@ def get_patient(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get a specific patient profile by ID.
-
-    VULNERABILITY I1 (Horizontal IDOR - Easy):
-    Patient A can view Patient B's profile by changing the patient_id.
-    No ownership check is performed.
-    """
+    """Get a specific patient profile by ID."""
     profile = db.query(PatientProfile).filter(PatientProfile.id == patient_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    # VULNERABLE: No check if current_user owns this profile
     user = db.query(User).filter(User.id == profile.user_id).first()
     return PatientProfileResponse(
         id=profile.id,
@@ -118,23 +101,13 @@ def update_patient(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Update a patient profile.
-
-    VULNERABILITY I2 (Horizontal IDOR - Easy):
-    Patient A can edit Patient B's profile by changing the patient_id.
-
-    VULNERABILITY B10 (Mass Assignment - Medium):
-    The user_id and role fields can be modified through the update body.
-    """
+    """Update a patient profile."""
     profile = db.query(PatientProfile).filter(PatientProfile.id == patient_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    # VULNERABLE: No ownership check — any user can update any profile
     update_data = update.model_dump(exclude_unset=True)
 
-    # VULNERABLE B10: Mass assignment — user_id and role can be changed
     if "role" in update_data and update_data["role"]:
         user = db.query(User).filter(User.id == profile.user_id).first()
         if user:
